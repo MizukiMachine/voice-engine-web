@@ -1,0 +1,80 @@
+project_info:
+  name: AI Voice Agent - Web Prototype
+  objective: iOSネイティブ/Meta Glassアプリ開発の前段としての、AI頭脳およびUXの検証
+  platform: Web Application (Mobile/Desktop Browser support)
+
+# コア音声エンジン仕様
+voice_engine:
+  provider: VAPI (vapi.ai)
+  interaction_mode:
+    type: Continuous Conversation (双方向会話)
+    start_trigger: Manual UI Button (Click to Talk) # マイクON/OFFボタン
+    wake_word: null # 今回のスコープ外 (実装しない)
+    interruption: Enabled (ユーザーの割り込み発話を許可)
+
+# 機能要件詳細
+features:
+  # ホットワードによるデバイス操作 (Function Calling)
+  hotwords:
+    camera:
+      keyword: "撮影" (および類似語)
+      action: ブラウザのWebカメラ映像をキャプチャ -> Vision AIで解析 -> 回答生成
+    recording:
+      keyword: "録音" (および類似語)
+      action: 音声録音の開始/停止 -> データ保存
+
+  # スタジオ機能 (設定・管理)
+  studio_settings:
+    system_prompt:
+      description: AIのキャラクター、口調、役割の編集機能
+      storage: Database
+    parameters:
+      - Voice ID (声色の変更)
+      - Speed (話速)
+      - Silence detection sensitivity (無音検知感度)
+
+  # 記憶システム (Long-term Memory)
+  memory:
+    description: ユーザーのプロフィールや過去の文脈を永続化する
+    storage: Database
+    capabilities:
+      - 自動記憶: 会話内容から重要な情報を抽出して保存
+      - 参照: 会話生成時に過去のメモリをコンテキストとして注入
+      - 手動編集: ユーザーが保存されたメモリを確認・修正できるUI
+
+  # 外部サービス連携
+  integrations:
+    google_workspace:
+      auth: OAuth 2.0 (開発用単一アカウント)
+      calendar:
+        scopes: [Read, Write]
+        actions: 予定の確認, 新規予定の作成
+      docs:
+        scopes: [Read, Write]
+        actions: ドキュメントの読み上げ, 議事録等の書き込み
+
+# 体験シミュレータ (壮大なデバッグ機能)
+# iOSのバックグラウンド動作をWeb上で再現するための手動トリガー群
+simulation_tools:
+  geofence_trigger:
+    ui_inputs:
+      - Location Name (例: 京都駅)
+      - Coordinates (Optional)
+    action_button: "到着シミュレーション実行"
+    behavior: AIが位置情報イベントを受信したと仮定し、場所に応じたアクションを実行
+
+  push_notification_trigger:
+    ui_inputs:
+      - Title (例: ニュース速報)
+      - Body (例: 本日の株価は...)
+    action_button: "通知受信シミュレーション実行"
+    behavior: AIがプッシュ通知を受信したと仮定し、TTSで読み上げを実行 (会話への割り込みテスト)
+
+# 推奨技術スタック構成案
+tech_stack_proposal:
+  frontend: Next.js (React) # VAPI Web SDKとの親和性が高い
+  backend: Python (FastAPI) # Google API操作や画像処理の実装が容易
+  database: PostgreSQL / Supabase # 設定とMemory(Vector/Text)の保存
+  ai_model:
+    vision: GPT-4o
+    logic: GPT-4o / Claude 3.5 Sonnet (VAPI経由またはBackend処理)
