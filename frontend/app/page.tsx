@@ -1,24 +1,138 @@
 'use client'
 
-import { useState } from 'react'
-import { Mic, MicOff, Phone, PhoneOff } from 'lucide-react'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { VoiceAgent } from '@/components/VoiceAgent'
+import { CameraCapture } from '@/components/VoiceAgent/CameraCapture'
+import { AudioRecorder } from '@/components/VoiceAgent/AudioRecorder'
+import { api } from '@/lib/api'
+
+interface TranscriptMessage {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  timestamp: Date
+}
 
 export default function Home() {
-  const [isConnected, setIsConnected] = useState(false)
-  const [isMuted, setIsMuted] = useState(false)
-  const [transcript, setTranscript] = useState<string[]>([])
+  const [transcript, setTranscript] = useState<TranscriptMessage[]>([])
+  const [showCamera, setShowCamera] = useState(false)
+  const [showRecorder, setShowRecorder] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const transcriptEndRef = useRef<HTMLDivElement>(null)
 
-  const handleConnect = () => {
-    setIsConnected(!isConnected)
-    if (!isConnected) {
-      setTranscript(prev => [...prev, '[システム] 会話を開始しました'])
-    } else {
-      setTranscript(prev => [...prev, '[システム] 会話を終了しました'])
+  // Auto-scroll transcript
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [transcript])
+
+  const handleTranscript = useCallback((message: { role: string; content: string }) => {
+    setTranscript(prev => [
+      ...prev,
+      {
+        role: message.role as 'user' | 'assistant',
+        content: message.content,
+        timestamp: new Date(),
+      },
+    ])
+  }, [])
+
+  const handleHotword = useCallback((command: 'capture' | 'record') => {
+    if (command === 'capture') {
+      setShowCamera(true)
+      setTranscript(prev => [
+        ...prev,
+        {
+          role: 'system',
+          content: '📷 カメラを起動しました',
+          timestamp: new Date(),
+        },
+      ])
+    } else if (command === 'record') {
+      setShowRecorder(true)
+      setTranscript(prev => [
+        ...prev,
+        {
+          role: 'system',
+          content: '🎤 録音機能を起動しました',
+          timestamp: new Date(),
+        },
+      ])
+    }
+  }, [])
+
+  const handleCameraCapture = useCallback(async (imageBase64: string) => {
+    setIsAnalyzing(true)
+    setTranscript(prev => [
+      ...prev,
+      {
+        role: 'system',
+        content: '🔍 画像を解析中...',
+        timestamp: new Date(),
+      },
+    ])
+
+    try {
+      const result = await api.analyzeImage(imageBase64)
+      setTranscript(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: `📷 ${(result as any).description}`,
+          timestamp: new Date(),
+        },
+      ])
+    } catch (error) {
+      setTranscript(prev => [
+        ...prev,
+        {
+          role: 'system',
+          content: '❌ 画像解析に失敗しました',
+          timestamp: new Date(),
+        },
+      ])
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }, [])
+
+  const handleRecordingComplete = useCallback((audioBlob: Blob) => {
+    setTranscript(prev => [
+      ...prev,
+      {
+        role: 'system',
+        content: `🎤 録音完了 (${(audioBlob.size / 1024).toFixed(1)} KB)`,
+        timestamp: new Date(),
+      },
+    ])
+  }, [])
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  const getRoleStyle = (role: string) => {
+    switch (role) {
+      case 'user':
+        return 'bg-primary-500/10 border-l-4 border-primary-500'
+      case 'assistant':
+        return 'bg-green-500/10 border-l-4 border-green-500'
+      case 'system':
+        return 'bg-slate-700/50 border-l-4 border-slate-500'
+      default:
+        return ''
     }
   }
 
-  const handleMute = () => {
-    setIsMuted(!isMuted)
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'user':
+        return 'あなた'
+      case 'assistant':
+        return 'AI'
+      case 'system':
+        return 'システム'
+      default:
+        return ''
+    }
   }
 
   return (
@@ -34,91 +148,70 @@ export default function Home() {
 
       {/* Voice Agent UI */}
       <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-8 mb-8">
-        <div className="flex flex-col items-center">
-          {/* Status Indicator */}
-          <div className={`w-32 h-32 rounded-full flex items-center justify-center mb-6 transition-all duration-300 ${
-            isConnected
-              ? 'bg-primary-500/20 ring-4 ring-primary-500 animate-pulse-slow'
-              : 'bg-slate-700'
-          }`}>
-            {isConnected ? (
-              <Mic className="w-16 h-16 text-primary-400" />
-            ) : (
-              <MicOff className="w-16 h-16 text-slate-500" />
-            )}
-          </div>
-
-          {/* Status Text */}
-          <p className={`text-lg mb-6 ${isConnected ? 'text-primary-400' : 'text-slate-400'}`}>
-            {isConnected ? '会話中...' : '待機中'}
-          </p>
-
-          {/* Control Buttons */}
-          <div className="flex gap-4">
-            <button
-              onClick={handleConnect}
-              className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium transition-all ${
-                isConnected
-                  ? 'bg-red-500 hover:bg-red-600 text-white'
-                  : 'bg-primary-500 hover:bg-primary-600 text-white'
-              }`}
-            >
-              {isConnected ? (
-                <>
-                  <PhoneOff className="w-5 h-5" />
-                  会話終了
-                </>
-              ) : (
-                <>
-                  <Phone className="w-5 h-5" />
-                  会話開始
-                </>
-              )}
-            </button>
-
-            {isConnected && (
-              <button
-                onClick={handleMute}
-                className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium transition-all ${
-                  isMuted
-                    ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
-                    : 'bg-slate-600 hover:bg-slate-500 text-white'
-                }`}
-              >
-                {isMuted ? (
-                  <>
-                    <MicOff className="w-5 h-5" />
-                    ミュート中
-                  </>
-                ) : (
-                  <>
-                    <Mic className="w-5 h-5" />
-                    ミュート
-                  </>
-                )}
-              </button>
-            )}
-          </div>
-        </div>
+        <VoiceAgent
+          onTranscript={handleTranscript}
+          onHotword={handleHotword}
+        />
       </div>
 
       {/* Transcript */}
       <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-6">
         <h2 className="text-xl font-semibold text-white mb-4">会話ログ</h2>
-        <div className="h-64 overflow-y-auto space-y-2">
+        <div className="h-80 overflow-y-auto space-y-3">
           {transcript.length === 0 ? (
             <p className="text-slate-500 text-center py-8">
               会話を開始すると、ここにログが表示されます
             </p>
           ) : (
-            transcript.map((line, index) => (
-              <p key={index} className="text-slate-300 text-sm">
-                {line}
-              </p>
+            transcript.map((message, index) => (
+              <div
+                key={index}
+                className={`p-3 rounded-lg ${getRoleStyle(message.role)}`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-xs font-medium ${
+                    message.role === 'user'
+                      ? 'text-primary-400'
+                      : message.role === 'assistant'
+                      ? 'text-green-400'
+                      : 'text-slate-400'
+                  }`}>
+                    {getRoleLabel(message.role)}
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {formatTime(message.timestamp)}
+                  </span>
+                </div>
+                <p className="text-slate-200 text-sm">{message.content}</p>
+              </div>
             ))
           )}
+          <div ref={transcriptEndRef} />
         </div>
       </div>
+
+      {/* API Key Warning */}
+      {!process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY && (
+        <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+          <p className="text-yellow-400 text-sm">
+            ⚠️ VAPI Public Keyが設定されていません。.envファイルにNEXT_PUBLIC_VAPI_PUBLIC_KEYを設定してください。
+          </p>
+        </div>
+      )}
+
+      {/* Camera Modal */}
+      <CameraCapture
+        isOpen={showCamera}
+        onClose={() => setShowCamera(false)}
+        onCapture={handleCameraCapture}
+      />
+
+      {/* Audio Recorder Modal */}
+      <AudioRecorder
+        isOpen={showRecorder}
+        onClose={() => setShowRecorder(false)}
+        onRecordingComplete={handleRecordingComplete}
+      />
     </div>
   )
 }
